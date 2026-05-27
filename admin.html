@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PowerGym Ibi - Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+        body {
+            background-color: #020305;
+            background-image: linear-gradient(to bottom, #060e24 0%, #020305 40%);
+            font-family: 'Inter', sans-serif;
+            color: #ffffff;
+            min-height: 100vh;
+            background-attachment: fixed;
+        }
+        .status-paid    { border-left: 4px solid #22c55e; background: linear-gradient(90deg, rgba(34,197,94,0.08) 0%, rgba(5,6,8,0) 50%); }
+        .status-pending { border-left: 4px solid #ef4444; background: linear-gradient(90deg, rgba(239,68,68,0.08) 0%, rgba(5,6,8,0) 50%); }
+        .status-warning { border-left: 4px solid #f59e0b; background: linear-gradient(90deg, rgba(245,158,11,0.08) 0%, rgba(5,6,8,0) 50%); }
+        #modal-overlay { display:none; position:fixed; inset:0; background:rgba(2,3,5,0.85); backdrop-filter:blur(6px); z-index:200; align-items:center; justify-content:center; }
+        #modal-overlay.active { display:flex; }
+        #modal-box { background:#0a1122; border:1px solid #16274a; border-radius:1rem; padding:1.5rem; width:92%; max-width:420px; max-height:90vh; overflow-y:auto; }
+        input, select { background:#060d1e; border:1px solid #16274a; border-radius:0.5rem; color:#fff; padding:0.5rem 0.75rem; width:100%; font-size:0.875rem; outline:none; }
+        input:focus, select:focus { border-color:#3b82f6; }
+        label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#94a3b8; display:block; margin-bottom:4px; }
+        .form-group { margin-bottom:1rem; }
+        .badge-paid    { background:rgba(34,197,94,0.15);  color:#22c55e; }
+        .badge-pending { background:rgba(239,68,68,0.15);  color:#ef4444; }
+        .badge-warning { background:rgba(245,158,11,0.15); color:#f59e0b; }
+        .badge { font-size:0.6rem; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; padding:2px 8px; border-radius:9999px; }
+        .month-btn { background:#16274a; border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background 0.15s; }
+        .month-btn:hover { background:#1e3a6e; }
+        #member-list { max-height:calc(100vh - 300px); overflow-y:auto; }
+        #member-list::-webkit-scrollbar { width:4px; }
+        #member-list::-webkit-scrollbar-thumb { background:#16274a; border-radius:4px; }
+    </style>
+</head>
+<body class="relative pb-24">
+ 
+<!-- Pantalla de carga -->
+<div id="loadingScreen" class="fixed inset-0 bg-[#020305] flex items-center justify-center z-50">
+    <div class="flex flex-col items-center gap-3">
+        <svg class="animate-spin h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <p class="text-slate-500 text-xs tracking-widest uppercase">Cargando...</p>
+    </div>
+</div>
+ 
+<!-- NAV -->
+<nav class="w-full bg-[#050811]/90 backdrop-blur-md border-b border-[#16274a] sticky top-0 z-50">
+    <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+        <span class="font-black italic tracking-widest uppercase text-sm">POWER GYM <span class="text-blue-500">ADMIN</span></span>
+        <button onclick="cerrarSesion()" class="text-[10px] font-bold text-slate-400 hover:text-red-400 uppercase tracking-wider">Salir</button>
+    </div>
+</nav>
+ 
+<div class="max-w-md mx-auto px-4 pt-6" id="app"></div>
+ 
+<!-- BOTTOM NAV -->
+<div class="fixed bottom-0 w-full bg-[#050811]/95 backdrop-blur-xl border-t border-[#16274a] z-50">
+    <div class="max-w-md mx-auto flex justify-around items-center h-16 px-2">
+        <button onclick="renderTab('pagos')" class="tab-btn flex flex-col items-center gap-1 w-full text-blue-500" id="btn-pagos">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            <span class="text-[9px] font-bold tracking-widest uppercase">Pagos</span>
+        </button>
+        <button onclick="renderTab('socios')" class="tab-btn flex flex-col items-center gap-1 w-full text-slate-500" id="btn-socios">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <span class="text-[9px] font-bold tracking-widest uppercase">Socios</span>
+        </button>
+        <button onclick="renderTab('ajustes')" class="tab-btn flex flex-col items-center gap-1 w-full text-slate-500" id="btn-ajustes">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <span class="text-[9px] font-bold tracking-widest uppercase">Ajustes</span>
+        </button>
+    </div>
+</div>
+ 
+<!-- MODAL -->
+<div id="modal-overlay">
+    <div id="modal-box">
+        <div id="modal-content"></div>
+    </div>
+</div>
+ 
+<!-- Firebase SDK -->
+<script type="module">
+    import { initializeApp, initializeApp as initializeApp2 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signOut as signOutSecondary } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+    import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+ 
+    const firebaseConfig = {
+        apiKey: "AIzaSyDsqb1_9u0MBdNNlN_wb2JwZwV9auHTcpI",
+        authDomain: "power-gym-ibi.firebaseapp.com",
+        projectId: "power-gym-ibi",
+        storageBucket: "power-gym-ibi.firebasestorage.app",
+        messagingSenderId: "244271958048",
+        appId: "1:244271958048:web:d1e24070b5a28901c1d445"
+    };
+ 
+    // App principal (sesión del admin)
+    const app  = initializeApp(firebaseConfig);
+    // App secundaria (para crear usuarios sin cerrar sesión del admin)
+    const app2 = initializeApp2(firebaseConfig, "secondary");
+ 
+    const auth  = getAuth(app);
+    const auth2 = getAuth(app2);
+    const db    = getFirestore(app);
+ 
+    const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+ 
+    // ── Comprobar que es admin ──────────────────────────────────────
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) { window.location.href = 'login.html'; return; }
+        const snap = await getDoc(doc(db, "socios", user.uid));
+        if (!snap.exists() || snap.data().rol !== 'admin') {
+            await signOut(auth);
+            window.location.href = 'login.html';
+            return;
+        }
+        document.getElementById('loadingScreen').style.display = 'none';
+        window.renderTab('pagos');
+    });
+ 
+    // ── Helpers ─────────────────────────────────────────────────────
+    window.cerrarSesion = async () => { await signOut(auth); window.location.href = 'login.html'; };
+ 
+    async function getSocios() {
+        const snap = await getDocs(collection(db, "socios"));
+        return snap.docs.filter(d => d.data().rol !== 'admin' && d.data().activo !== false).map(d => ({ id: d.id, ...d.data() }));
+    }
+ 
+    async function getPagosMes(mes, anio) {
+        const q = query(collection(db, "pagos"), where("mes","==",mes), where("anio","==",anio));
+        const snap = await getDocs(q);
+        // Mapa socioId -> pago
+        const map = {};
+        snap.forEach(d => { map[d.data().socioId] = { id: d.id, ...d.data() }; });
+        return map;
+    }
+ 
+    // ── TAB: PAGOS ──────────────────────────────────────────────────
+    window.renderPagos = async function() {
+        document.getElementById('app').innerHTML = `<div class="text-center py-10"><svg class="animate-spin h-6 w-6 text-blue-500 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>`;
+ 
+        const socios = await getSocios();
+        const pagosMes = await getPagosMes(window._mesActual, window._anioActual);
+ 
+        // Construir vista combinada: socios + estado pago del mes
+        const lista = socios.map(s => {
+            const pago = pagosMes[s.id];
+            return {
+                ...s,
+                pagoId: pago?.id || null,
+                pagado: pago?.importe || 0,
+                metodoPago: pago?.metodoPago || '',
+                tipoPago: pago?.tipoPago || 'mensual',
+                estadoMes: pago ? (pago.estado || 'pagado') : 'pendiente'
+            };
+        });
+ 
+        const totalRecaudado = lista.reduce((a, s) => a + (s.pagado || 0), 0);
+        const totalMiembros  = lista.length;
+ 
+        document.getElementById('app').innerHTML = `
+            <div class="flex flex-col gap-5">
+                <div class="flex items-center justify-between bg-[#0a1122] border border-[#16274a] rounded-xl px-4 py-3">
+                    <button class="month-btn" onclick="cambiarMes(-1)">
+                        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <h1 class="text-base font-black uppercase tracking-widest">${MESES[window._mesActual].toUpperCase()} ${window._anioActual}</h1>
+                    <button class="month-btn" onclick="cambiarMes(1)">
+                        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-[#0a1122] p-3 rounded-xl border border-[#16274a] flex flex-col gap-1">
+                        <p class="text-[8px] uppercase text-slate-400 tracking-wider">Recaudado</p>
+                        <p class="text-lg font-black text-blue-500">${totalRecaudado.toFixed(2)}€</p>
+                    </div>
+                    <div class="bg-[#0a1122] p-3 rounded-xl border border-[#16274a] flex flex-col gap-1">
+                        <p class="text-[8px] uppercase text-slate-400 tracking-wider">Miembros</p>
+                        <p class="text-lg font-black text-white">${totalMiembros}</p>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <div class="flex gap-2 mb-1">
+                        <input type="text" id="pagos-search" placeholder="Buscar socio..." oninput="filtrarPagos()"
+                            style="flex:1;background:#0a1122;border:1px solid #16274a;border-radius:0.5rem;color:#fff;padding:0.4rem 0.75rem;font-size:0.75rem;outline:none;">
+                        <select id="pagos-filtro" onchange="filtrarPagos()" style="background:#0a1122;border:1px solid #16274a;border-radius:0.5rem;color:#94a3b8;padding:0.4rem 0.5rem;font-size:0.7rem;outline:none;width:auto;">
+                            <option value="todos">Todos</option>
+                            <option value="pendiente">Pendientes</option>
+                            <option value="revisar">Revisar</option>
+                            <option value="pagado">Pagados</option>
+                        </select>
+                    </div>
+                    <p class="text-[9px] font-bold uppercase tracking-widest text-slate-500">Estado de pagos</p>
+                    ${lista.map(s => `
+                        <div class="pago-card p-3 rounded-r-xl border border-[#16274a] ${estadoCard(s.estadoMes)} flex items-center justify-between gap-2" data-estado="${s.estadoMes}" data-nombre="${s.nombre.toLowerCase()}">
+                            <div class="flex flex-col gap-1 flex-1 min-w-0">
+                                <span class="font-bold text-sm truncate">${s.nombre}</span>
+                                <div class="flex items-center gap-2">
+                                    ${estadoBadge(s.estadoMes)}
+                                    <span class="text-[9px] text-slate-400">${s.tarifa}€/mes</span>
+                                    ${s.metodoPago ? `<span class="text-[9px] text-slate-500">· ${s.metodoPago}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="flex gap-1 shrink-0">
+                                ${s.estadoMes === 'pendiente' ? `<button onclick="modalAprobarPago('${s.id}','${s.nombre}',${s.tarifa})" class="text-[9px] bg-green-900/30 text-green-400 border border-green-900/50 px-2 py-1 rounded-lg font-bold hover:bg-green-900/50 transition">✓ Aprobar</button>` : ''}
+                                ${s.estadoMes === 'revisar' ? `<button onclick="abrirRevisar(this)" data-id="${s.id}" data-nombre="${s.nombre}" data-tarifa="${s.tarifa}" data-pagoid="${s.pagoId}" data-pagado="${s.pagado}" data-tipo="${s.tipoPago||'mensual'}" data-metodo="${s.metodoPago||''}" class="text-[9px] bg-yellow-900/30 text-yellow-400 border border-yellow-900/50 px-2 py-1 rounded-lg font-bold">Revisar</button>` : ''}
+                                ${s.pagoId ? `<button onclick="modalEditarEstadoPago('${s.pagoId}','${s.nombre}','${s.estadoMes}','${s.id}','${s.tipoPago||'mensual'}')" class="text-[9px] bg-[#16274a] text-slate-400 border border-[#16274a] px-2 py-1 rounded-lg font-bold hover:text-white transition">✎</button>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+    };
+ 
+    window.cambiarMes = function(dir) {
+        window._mesActual += dir;
+        if (window._mesActual < 0)  { window._mesActual = 11; window._anioActual--; }
+        if (window._mesActual > 11) { window._mesActual = 0;  window._anioActual++; }
+        window.renderPagos();
+    };
+ 
+    window.abrirRevisar = function(btn) {
+        const id     = btn.dataset.id;
+        const nombre = btn.dataset.nombre;
+        const tarifa = parseFloat(btn.dataset.tarifa);
+        const pagoId = btn.dataset.pagoid;
+        const pagado = parseFloat(btn.dataset.pagado);
+        const tipo   = btn.dataset.tipo || 'mensual';
+        const metodo = btn.dataset.metodo || '';
+        window.modalAprobarPago(id, nombre, tarifa, pagoId, pagado, tipo, metodo);
+    };
+
+    window.modalAprobarPago = function(socioId, nombre, tarifa, pagoId = null, importeReal = null, tipoPagoActual = 'mensual', metodoPagoActual = '') {
+        openModal(`
+            <h3 class="text-base font-black mb-4">Aprobar pago — ${nombre}</h3>
+            <div class="form-group">
+                <label>Tipo de pago</label>
+                <div class="grid grid-cols-2 gap-2" id="mp-tipo-btns">
+                    <button type="button" onclick="selectTipoPagoAdmin('mensual', ${tarifa})"
+                        id="mp-tipo-mensual"
+                        style="background:#1b4dee;border:1px solid #2e66ff;color:#fff;border-radius:0.5rem;padding:0.5rem;font-size:0.8rem;font-weight:700;cursor:pointer;">
+                        📅 Mensual
+                    </button>
+                    <button type="button" onclick="selectTipoPagoAdmin('trimestral', ${tarifa})"
+                        id="mp-tipo-trimestral"
+                        style="background:#060d1e;border:1px solid #16274a;color:#94a3b8;border-radius:0.5rem;padding:0.5rem;font-size:0.8rem;font-weight:700;cursor:pointer;">
+                        📦 Trimestral
+                    </button>
+                </div>
+                <input type="hidden" id="mp-tipo" value="${tipoPagoActual}">
+            </div>
+            <div class="form-group">
+                <label>Método de pago</label>
+                <select id="mp-metodo">
+                    <option value="Efectivo"      ${metodoPagoActual === 'Efectivo'      ? 'selected' : ''}>Efectivo</option>
+                    <option value="Bizum"         ${metodoPagoActual === 'Bizum'         ? 'selected' : ''}>Bizum</option>
+                    <option value="Transferencia" ${metodoPagoActual === 'Transferencia' ? 'selected' : ''}>Transferencia</option>
+                    <option value="Domiciliación" ${metodoPagoActual === 'Domiciliación' ? 'selected' : ''}>Domiciliación</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label id="mp-importe-label">Importe ${tipoPagoActual === 'trimestral' ? 'trimestral' : 'mensual'} recibido (€)</label>
+                <input type="number" id="mp-importe" value="${importeReal !== null ? (tipoPagoActual === 'trimestral' ? (importeReal*3).toFixed(2) : importeReal.toFixed(2)) : tarifa}" min="0" step="0.01">
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="closeModal()" class="flex-1 py-2 rounded-lg bg-[#16274a] text-slate-300 text-sm font-bold">Cancelar</button>
+                <button onclick="confirmarPago('${socioId}',${tarifa},'${pagoId}')" class="flex-1 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-500 transition">Confirmar</button>
+            </div>
+        `);
+        setTimeout(() => {
+            const activo   = 'background:#1b4dee;border:1px solid #2e66ff;color:#fff;border-radius:0.5rem;padding:0.5rem;font-size:0.8rem;font-weight:700;cursor:pointer;';
+            const inactivo = 'background:#060d1e;border:1px solid #16274a;color:#94a3b8;border-radius:0.5rem;padding:0.5rem;font-size:0.8rem;font-weight:700;cursor:pointer;';
+            const mBtn = document.getElementById('mp-tipo-mensual');
+            const tBtn = document.getElementById('mp-tipo-trimestral');
+            if (mBtn && tBtn) {
+                mBtn.style.cssText = tipoPagoActual === 'mensual'    ? activo : inactivo;
+                tBtn.style.cssText = tipoPagoActual === 'trimestral' ? activo : inactivo;
+            }
+        }, 0);
+    };
+ 
+    window.modalEditarEstadoPago = function(pagoId, nombre, estadoActual, socioId, tipoPago) {
+        openModal(`
+            <h3 class="text-base font-black mb-4">Editar estado — ${nombre}</h3>
+            <div class="form-group">
+                <label>Estado del pago</label>
+                <select id="ep-estado">
+                    <option value="pagado"   ${estadoActual === 'pagado'    ? 'selected' : ''}>✓ Pagado</option>
+                    <option value="revisar"  ${estadoActual === 'revisar'   ? 'selected' : ''}>⚠ Revisar</option>
+                    <option value="pendiente"${estadoActual === 'pendiente' ? 'selected' : ''}>✗ Pendiente</option>
+                </select>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl bg-[#16274a] text-slate-300 text-sm font-bold">Cancelar</button>
+                <button onclick="guardarEstadoPago('${pagoId}','${socioId}','${tipoPago}')" class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-500 transition">Guardar</button>
+            </div>
+        `);
+    };
+ 
+    window.guardarEstadoPago = async function(pagoId, socioId, tipoPago) {
+        const estado = document.getElementById('ep-estado').value;
+
+        // Función auxiliar: aplica cambio a un doc por (socioId, mes, anio)
+        async function aplicarMes(sId, mes, anio, docId) {
+            if (estado === 'pendiente') {
+                if (docId) await deleteDoc(doc(db, "pagos", docId));
+            } else {
+                if (docId) await updateDoc(doc(db, "pagos", docId), { estado });
+            }
+        }
+
+        // Actualizar/eliminar el mes actual
+        await aplicarMes(socioId, window._mesActual, window._anioActual, pagoId);
+
+        // Si es trimestral, propagar a los 2 meses siguientes
+        if (tipoPago === 'trimestral') {
+            for (let i = 1; i < 3; i++) {
+                let mes  = window._mesActual + i;
+                let anio = window._anioActual;
+                if (mes > 11) { mes -= 12; anio++; }
+                const q = query(collection(db, "pagos"),
+                    where("socioId", "==", socioId),
+                    where("mes", "==", mes),
+                    where("anio", "==", anio)
+                );
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    await aplicarMes(socioId, mes, anio, snap.docs[0].id);
+                }
+            }
+        }
+
+        closeModal();
+        window.renderPagos();
+    };
+ 
+    window.confirmarPago = async function(socioId, tarifa, pagoId) {
+        const metodo        = document.getElementById('mp-metodo').value;
+        const importe       = parseFloat(document.getElementById('mp-importe').value) || 0;
+        const tipoPago      = document.getElementById('mp-tipo')?.value || 'mensual';
+        const estado        = 'pagado'; // Admin confirma explicitamente -> siempre pagado
+        const importePorMes = tipoPago === 'trimestral' ? importe / 3 : importe;
+        const meses         = tipoPago === 'trimestral' ? 3 : 1;
+
+        if (pagoId && pagoId !== 'null') {
+            // Actualizar el doc existente del mes actual
+            await updateDoc(doc(db, "pagos", pagoId), {
+                importe: importePorMes, metodoPago: metodo, tipoPago, estado, fecha: new Date()
+            });
+            // Si es trimestral, actualizar/crear los otros 2 meses
+            if (tipoPago === 'trimestral') {
+                for (let i = 1; i < 3; i++) {
+                    let mes  = window._mesActual + i;
+                    let anio = window._anioActual;
+                    if (mes > 11) { mes -= 12; anio++; }
+                    // Buscar si ya existe doc para ese mes
+                    const q = query(collection(db, "pagos"),
+                        where("socioId", "==", socioId),
+                        where("mes", "==", mes),
+                        where("anio", "==", anio)
+                    );
+                    const snap = await getDocs(q);
+                    if (!snap.empty) {
+                        await updateDoc(doc(db, "pagos", snap.docs[0].id), {
+                            importe: importePorMes, metodoPago: metodo, tipoPago, estado, fecha: new Date()
+                        });
+                    } else {
+                        await addDoc(collection(db, "pagos"), {
+                            socioId, mes, anio,
+                            importe: importePorMes, metodoPago: metodo, tipoPago, estado, fecha: new Date()
+                        });
+                    }
+                }
+            }
+        } else {
+            // Pago nuevo — crear docs para todos los meses
+            for (let i = 0; i < meses; i++) {
+                let mes  = window._mesActual + i;
+                let anio = window._anioActual;
+                if (mes > 11) { mes -= 12; anio++; }
+                // Evitar duplicados: comprobar si ya existe
+                const q = query(collection(db, "pagos"),
+                    where("socioId", "==", socioId),
+                    where("mes", "==", mes),
+                    where("anio", "==", anio)
+                );
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    await updateDoc(doc(db, "pagos", snap.docs[0].id), {
+                        importe: importePorMes, metodoPago: metodo, tipoPago, estado, fecha: new Date()
+                    });
+                } else {
+                    await addDoc(collection(db, "pagos"), {
+                        socioId, mes, anio,
+                        importe: importePorMes, metodoPago: metodo, tipoPago, estado, fecha: new Date()
+                    });
+                }
+            }
+        }
+        closeModal();
+        window.renderPagos();
+    };
+ 
+    // ── TAB: SOCIOS ─────────────────────────────────────────────────
+    window.renderSocios = async function() {
+        document.getElementById('app').innerHTML = `<div class="text-center py-10"><svg class="animate-spin h-6 w-6 text-blue-500 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg></div>`;
+        const socios = await getSocios();
+        const filtro = (window._sociosFiltro || '').toLowerCase();
+        const lista  = socios.filter(s => s.nombre.toLowerCase().includes(filtro));
+ 
+        document.getElementById('app').innerHTML = `
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-black uppercase tracking-wider">Socios</h2>
+                        <p class="text-[9px] text-slate-500 uppercase tracking-widest">${socios.length} miembros en total</p>
+                    </div>
+                    <button onclick="modalNuevoSocio()" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 transition text-white text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                        Añadir
+                    </button>
+                </div>
+                <div class="relative">
+                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <input type="text" placeholder="Buscar socio..." value="${filtro}"
+                        oninput="window._sociosFiltro=this.value; renderSocios()"
+                        style="padding-left:2.25rem; background:#0a1122; border:1px solid #16274a;">
+                </div>
+                <div id="member-list" class="flex flex-col gap-2">
+                    ${lista.length === 0 ? '<p class="text-slate-500 text-sm text-center py-8">No se encontraron socios</p>' : ''}
+                    ${lista.map(s => `
+                        <div class="bg-[#0a1122] border border-[#16274a] rounded-xl p-3 flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-full bg-[#16274a] flex items-center justify-center shrink-0">
+                                <span class="text-xs font-black text-blue-400">${s.nombre.split(' ').map(w=>w[0]).slice(0,2).join('')}</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">${s.nombre}</p>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <span class="text-[9px] text-slate-400">${s.tarifa}€/mes · @${s.username}</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-1.5 shrink-0">
+                                <button onclick="modalEditarSocio('${s.id}')" title="Editar"
+                                    class="w-8 h-8 rounded-lg bg-[#16274a] hover:bg-[#1e3a6e] flex items-center justify-center transition">
+                                    <svg class="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                </button>
+                                <button onclick="confirmarEliminar('${s.id}','${s.nombre}')" title="Eliminar"
+                                    class="w-8 h-8 rounded-lg bg-red-900/20 hover:bg-red-900/40 flex items-center justify-center transition">
+                                    <svg class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+    };
+ 
+    window.modalNuevoSocio = function() {
+        openModal(`
+            <h3 class="text-base font-black mb-4">Nuevo socio</h3>
+            <div class="form-group">
+                <label>Nombre completo</label>
+                <input type="text" id="ns-nombre" placeholder="Nombre Apellido">
+            </div>
+            <div class="form-group">
+                <label>Nombre de usuario <span class="normal-case text-slate-500">(para iniciar sesión)</span></label>
+                <input type="text" id="ns-username" placeholder="nombre.apellido" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Contraseña de acceso</label>
+                <input type="password" id="ns-pass" placeholder="••••••" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label>Plan de pago</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" id="ns-plan-mensual" onclick="selectPlanNS('mensual')"
+                        style="background:#1b4dee;border:1px solid #2e66ff;color:#fff;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;">
+                        📅 Mensual
+                    </button>
+                    <button type="button" id="ns-plan-trimestral" onclick="selectPlanNS('trimestral')"
+                        style="background:#060d1e;border:1px solid #16274a;color:#94a3b8;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;">
+                        📦 Trimestral
+                    </button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label id="ns-tarifa-label">Tarifa mensual (€)</label>
+                <input type="number" id="ns-tarifa" value="40" min="0" step="0.01">
+            </div>
+            <p id="ns-error" class="text-red-400 text-[10px] mb-2 hidden"></p>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl bg-[#16274a] text-slate-300 text-sm font-bold">Cancelar</button>
+                <button onclick="guardarNuevoSocio()" id="ns-btn" class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-500 transition">Crear socio</button>
+            </div>
+        `);
+    };
+ 
+    window.guardarNuevoSocio = async function() {
+        const nombre   = document.getElementById('ns-nombre').value.trim();
+        const username = document.getElementById('ns-username').value.trim().toLowerCase();
+        const pass     = document.getElementById('ns-pass').value;
+        const tarifa   = parseFloat(document.getElementById('ns-tarifa').value) || 40;
+        const plan     = window._planNuevoSocio || 'mensual';
+        const errEl    = document.getElementById('ns-error');
+        const btn      = document.getElementById('ns-btn');
+ 
+        if (!nombre)    { errEl.textContent = 'El nombre es obligatorio.'; errEl.classList.remove('hidden'); return; }
+        if (!username)  { errEl.textContent = 'El usuario es obligatorio.'; errEl.classList.remove('hidden'); return; }
+        if (pass.length < 6) { errEl.textContent = 'La contraseña debe tener mínimo 6 caracteres.'; errEl.classList.remove('hidden'); return; }
+ 
+        btn.textContent = 'Creando...';
+        btn.disabled = true;
+        errEl.classList.add('hidden');
+ 
+        try {
+            // Crear en Firebase Auth usando la app secundaria (no cierra sesión del admin)
+            const email = username + '@powergym.local';
+            const cred  = await createUserWithEmailAndPassword(auth2, email, pass);
+            const uid   = cred.user.uid;
+ 
+            // Cerrar sesión en la app secundaria inmediatamente
+            await signOutSecondary(auth2);
+ 
+            // Guardar datos en Firestore con el UID como ID del documento
+            await setDoc(doc(db, "socios", uid), {
+                nombre,
+                username,
+                tarifa,
+                plan,
+                rol: 'socio',
+                activo: true,
+                fechaAlta: new Date()
+            });
+ 
+            closeModal();
+            window.renderSocios();
+        } catch(e) {
+            console.error(e);
+            let msg = 'Error al crear el socio.';
+            if (e.code === 'auth/email-already-in-use') msg = 'Ese nombre de usuario ya existe.';
+            if (e.code === 'auth/weak-password') msg = 'La contraseña es demasiado débil.';
+            errEl.textContent = msg;
+            errEl.classList.remove('hidden');
+            btn.textContent = 'Crear socio';
+            btn.disabled = false;
+        }
+    };
+ 
+    window.modalEditarSocio = async function(id) {
+        const snap = await getDoc(doc(db, "socios", id));
+        if (!snap.exists()) return;
+        const s = snap.data();
+        openModal(`
+            <h3 class="text-base font-black mb-4">Editar — ${s.nombre}</h3>
+            <div class="form-group">
+                <label>Nombre completo</label>
+                <input type="text" id="es-nombre" value="${s.nombre}">
+            </div>
+            <div class="form-group">
+                <label>Plan de pago</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" id="es-plan-mensual" onclick="selectPlanES('mensual')"
+                        style="${(s.plan||'mensual')==='mensual'?'background:#1b4dee;border:1px solid #2e66ff;color:#fff':'background:#060d1e;border:1px solid #16274a;color:#94a3b8'};border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;">
+                        📅 Mensual
+                    </button>
+                    <button type="button" id="es-plan-trimestral" onclick="selectPlanES('trimestral')"
+                        style="${(s.plan||'mensual')==='trimestral'?'background:#1b4dee;border:1px solid #2e66ff;color:#fff':'background:#060d1e;border:1px solid #16274a;color:#94a3b8'};border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;">
+                        📦 Trimestral
+                    </button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label id="es-tarifa-label">Tarifa ${(s.plan||'mensual')==='trimestral'?'trimestral':'mensual'} (€)</label>
+                <input type="number" id="es-tarifa" value="${s.tarifa}" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Nueva contraseña <span style="text-transform:none;font-weight:400;color:#64748b">(dejar vacío para no cambiar)</span></label>
+                <input type="password" id="es-pass" placeholder="Mínimo 6 caracteres">
+            </div>
+            <p id="es-error" class="hidden text-red-400 text-[10px] font-bold mb-2"></p>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl bg-[#16274a] text-slate-300 text-sm font-bold">Cancelar</button>
+                <button id="es-btn" onclick="guardarEdicionSocio('${id}')" class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-500 transition">Guardar</button>
+            </div>
+        `);
+    };
+ 
+    window.guardarEdicionSocio = async function(id) {
+        const nombre       = document.getElementById('es-nombre').value.trim();
+        const tarifa       = parseFloat(document.getElementById('es-tarifa').value) || 40;
+        const plan         = window._planEditarSocio || 'mensual';
+        const pass         = document.getElementById('es-pass').value;
+        const errEl        = document.getElementById('es-error');
+        const btn          = document.getElementById('es-btn');
+ 
+        if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; errEl.classList.remove('hidden'); return; }
+        if (pass && pass.length < 6) { errEl.textContent = 'La contraseña debe tener mínimo 6 caracteres.'; errEl.classList.remove('hidden'); return; }
+ 
+        btn.textContent = 'Guardando...';
+        btn.disabled = true;
+        errEl.classList.add('hidden');
+ 
+        try {
+            const apiKey = 'AIzaSyDsqb1_9u0MBdNNlN_wb2JwZwV9auHTcpI';
+ 
+            // Cambiar contraseña si se proporcionó (via REST API de Firebase Identity Toolkit)
+            if (pass) {
+                const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ localId: id, password: pass })
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error.message);
+            }
+ 
+            // Guardar cambios en Firestore
+            await updateDoc(doc(db, "socios", id), { nombre, tarifa, plan });
+ 
+            closeModal();
+            window.renderSocios();
+        } catch(e) {
+            console.error(e);
+            let msg = 'Error al guardar los cambios.';
+            if (e.message && e.message.includes('WEAK_PASSWORD')) msg = 'La contraseña es demasiado débil.';
+            errEl.textContent = msg;
+            errEl.classList.remove('hidden');
+            btn.textContent = 'Guardar';
+            btn.disabled = false;
+        }
+    };
+ 
+    window.confirmarEliminar = function(id, nombre) {
+        openModal(`
+            <div class="text-center">
+                <div class="w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                </div>
+                <h3 class="text-base font-black mb-1">Dar de baja al socio</h3>
+                <p class="text-sm text-slate-400 mb-1">¿Seguro que quieres dar de baja a <span class="text-white font-bold">${nombre}</span>?</p>
+                <p class="text-[9px] text-slate-500 mb-5">El socio desaparecerá de las listas pero su historial de pagos se conservará. Recuerda eliminar su acceso en Firebase Console → Authentication.</p>
+                <div class="flex gap-2">
+                    <button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl bg-[#16274a] text-slate-300 text-sm font-bold">Cancelar</button>
+                    <button onclick="eliminarSocio('${id}')" class="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-500 transition">Dar de baja</button>
+                </div>
+            </div>
+        `);
+    };
+ 
+    window.eliminarSocio = async function(id) {
+        await updateDoc(doc(db, "socios", id), { activo: false });
+        closeModal();
+        window.renderSocios();
+    };
+ 
+    // ── TAB: AJUSTES ────────────────────────────────────────────────
+    window.renderAjustes = async function() {
+        const socios = await getSocios();
+        const pagosMes = await getPagosMes(window._mesActual, window._anioActual);
+        const lista = socios.map(s => ({ ...s, pago: pagosMes[s.id] || null }));
+        const totalRecaudado = lista.reduce((a, s) => a + (s.pago?.importe || 0), 0);
+        const pagados = lista.filter(s => s.pago?.estado === 'pagado').length;
+ 
+        document.getElementById('app').innerHTML = `
+            <div class="flex flex-col gap-5">
+                <div>
+                    <h2 class="text-lg font-black uppercase tracking-wider">Ajustes</h2>
+                    <p class="text-[9px] text-slate-500 uppercase tracking-widest">Exportar informes</p>
+                </div>
+                <div class="bg-[#0a1122] border border-[#16274a] rounded-xl p-5">
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-8 h-8 rounded-lg bg-red-900/30 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13zM9.5 17h-2v-7h2v7zm3.5 0h-2v-5h2v5zm3.5 0h-2v-3h2v3z"/></svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-black">Informe de pagos</p>
+                            <p class="text-[9px] text-slate-500">Genera un PDF con el resumen del periodo</p>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Mes</label>
+                        <select id="pdf-mes">
+                            ${MESES.map((m,i) => `<option value="${i}" ${i===window._mesActual?'selected':''}>${m}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Año</label>
+                        <select id="pdf-anio">
+                            ${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y===window._anioActual?'selected':''}>${y}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 my-4">
+                        <div class="bg-[#060d1e] rounded-lg p-2 text-center">
+                            <p class="text-[8px] text-slate-500 uppercase">Pagados</p>
+                            <p class="font-black text-green-400">${pagados}</p>
+                        </div>
+                        <div class="bg-[#060d1e] rounded-lg p-2 text-center">
+                            <p class="text-[8px] text-slate-500 uppercase">Total €</p>
+                            <p class="font-black text-blue-400">${totalRecaudado}€</p>
+                        </div>
+                    </div>
+                    <p class="text-[9px] text-slate-500 mb-3">El PDF incluirá socios que han pagado, pendientes y resumen financiero.</p>
+                    <button onclick="generarPDF()" class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-700 to-blue-500 text-white text-sm font-black uppercase tracking-widest hover:opacity-90 transition flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Descargar PDF
+                    </button>
+                </div>
+                <div class="bg-[#0a1122] border border-[#16274a] rounded-xl p-4">
+                    <p class="text-xs font-black uppercase tracking-widest mb-3 text-slate-300">Resumen base de datos</p>
+                    <div class="flex flex-col gap-2">
+                        ${lista.map(s => `
+                            <div class="flex items-center justify-between py-1.5 border-b border-[#16274a] last:border-0">
+                                <span class="text-sm text-slate-300">${s.nombre}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[9px] text-slate-500">${s.tarifa}€</span>
+                                    ${estadoBadge(s.pago ? (s.pago.estado || 'pagado') : 'pendiente')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>`;
+    };
+ 
+    // ── PDF ─────────────────────────────────────────────────────────
+    window.generarPDF = async function() {
+        const mesIdx    = parseInt(document.getElementById('pdf-mes').value);
+        const anio      = parseInt(document.getElementById('pdf-anio').value);
+        const mesNombre = MESES[mesIdx];
+        const socios    = await getSocios();
+        const pagosMes  = await getPagosMes(mesIdx, anio);
+ 
+        const lista = socios.map(s => {
+            const pago = pagosMes[s.id];
+            return { ...s, pago, estadoMes: pago ? (pago.estado || 'pagado') : 'pendiente', pagado: pago?.importe || 0, metodoPago: pago?.metodoPago || '—' };
+        });
+ 
+        const pagados    = lista.filter(s => s.estadoMes === 'pagado');
+        const parciales  = lista.filter(s => s.estadoMes === 'revisar');
+        const pendientes = lista.filter(s => s.estadoMes === 'pendiente');
+        const totalRecaudado = lista.reduce((a, s) => a + s.pagado, 0);
+ 
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation:'p', unit:'mm', format:'a4' });
+        const W = doc.internal.pageSize.getWidth();
+        let y = 0;
+ 
+        doc.setFillColor(6,14,36); doc.rect(0,0,W,38,'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(255,255,255);
+        doc.text('POWER GYM IBI', 14, 16);
+        doc.setFontSize(9); doc.setTextColor(100,160,255); doc.text('INFORME DE PAGOS', 14, 23);
+        doc.setFontSize(10); doc.setTextColor(200,210,230); doc.text(`Periodo: ${mesNombre.toUpperCase()} ${anio}`, 14, 31);
+        const hoy = new Date().toLocaleDateString('es-ES');
+        doc.setFontSize(8); doc.setTextColor(130,140,160); doc.text(`Generado: ${hoy}`, W-14, 31, {align:'right'});
+        y = 50;
+ 
+        const stats = [
+            ['Total socios', socios.length, [60,60,80]],
+            ['Han pagado',   pagados.length, [34,197,94]],
+            ['Pago parcial', parciales.length, [245,158,11]],
+            ['Pendientes',   pendientes.length, [239,68,68]],
+            ['Recaudado',   `${totalRecaudado}€`, [100,160,255]],
+        ];
+        const bw = (W-28)/3;
+        stats.forEach(([label,val,color],i) => {
+            const col = i%3, row = Math.floor(i/3);
+            const bx = 14+col*(bw+2), by = y+row*22;
+            doc.setFillColor(10,17,34); doc.roundedRect(bx,by,bw,18,2,2,'F');
+            doc.setFontSize(7); doc.setTextColor(130,140,160); doc.text(label.toUpperCase(), bx+bw/2, by+6, {align:'center'});
+            doc.setFontSize(13); doc.setTextColor(...color); doc.setFont('helvetica','bold');
+            doc.text(String(val), bx+bw/2, by+14, {align:'center'});
+        });
+        y += 50;
+ 
+        // Pagados
+        doc.setFillColor(34,197,94); doc.rect(14,y,4,6,'F');
+        doc.setFontSize(10); doc.setTextColor(34,197,94); doc.setFont('helvetica','bold');
+        doc.text('SOCIOS QUE HAN PAGADO', 21, y+5); y += 10;
+        if (pagados.length+parciales.length > 0) {
+            const rows = [...pagados,...parciales].map(s => [s.nombre,`${s.tarifa}€`,`${s.pagado}€`,s.metodoPago,s.estadoMes==='pagado'?'Completo':'Parcial']);
+            doc.autoTable({ startY:y, head:[['Nombre','Tarifa','Pagado','Método','Estado']], body:rows, theme:'grid',
+                styles:{fontSize:8,cellPadding:3,textColor:[220,225,235],fillColor:[10,17,34],lineColor:[22,39,74],lineWidth:0.3},
+                headStyles:{fillColor:[6,20,50],textColor:[100,160,255],fontStyle:'bold',fontSize:7.5},
+                alternateRowStyles:{fillColor:[14,24,46]},
+                columnStyles:{0:{cellWidth:55},1:{cellWidth:20,halign:'center'},2:{cellWidth:20,halign:'center'},3:{cellWidth:35,halign:'center'},4:{cellWidth:28,halign:'center'}},
+                margin:{left:14,right:14} });
+            y = doc.lastAutoTable.finalY+10;
+        } else {
+            doc.setFontSize(8); doc.setTextColor(130,140,160); doc.text('No hay socios con pago registrado.', 14, y+4); y+=12;
+        }
+ 
+        if (y>240) { doc.addPage(); y=20; }
+        doc.setFillColor(239,68,68); doc.rect(14,y,4,6,'F');
+        doc.setFontSize(10); doc.setTextColor(239,68,68); doc.setFont('helvetica','bold');
+        doc.text('SOCIOS CON PAGO PENDIENTE', 21, y+5); y+=10;
+        if (pendientes.length>0) {
+            const rows = pendientes.map(s => [s.nombre,`${s.tarifa}€`,'0€','—','Pendiente']);
+            doc.autoTable({ startY:y, head:[['Nombre','Tarifa','Pagado','Método','Estado']], body:rows, theme:'grid',
+                styles:{fontSize:8,cellPadding:3,textColor:[220,225,235],fillColor:[20,10,12],lineColor:[74,22,22],lineWidth:0.3},
+                headStyles:{fillColor:[50,10,14],textColor:[239,100,100],fontStyle:'bold',fontSize:7.5},
+                alternateRowStyles:{fillColor:[28,14,16]},
+                columnStyles:{0:{cellWidth:55},1:{cellWidth:20,halign:'center'},2:{cellWidth:20,halign:'center'},3:{cellWidth:35,halign:'center'},4:{cellWidth:28,halign:'center'}},
+                margin:{left:14,right:14} });
+            y = doc.lastAutoTable.finalY+10;
+        } else {
+            doc.setFontSize(8); doc.setTextColor(130,140,160); doc.text('Todos los socios han pagado. ¡Excelente!', 14, y+4); y+=12;
+        }
+ 
+        if (y>220) { doc.addPage(); y=20; }
+        doc.setFillColor(100,160,255); doc.rect(14,y,4,6,'F');
+        doc.setFontSize(10); doc.setTextColor(100,160,255); doc.setFont('helvetica','bold');
+        doc.text('LISTADO COMPLETO DE SOCIOS', 21, y+5); y+=10;
+        doc.autoTable({
+            startY:y,
+            head:[['#','Nombre','Tarifa','Pagado','Estado']],
+            body: lista.map((s,i) => [i+1, s.nombre, `${s.tarifa}€`, `${s.pagado}€`, s.estadoMes==='pagado'?'Pagado':s.estadoMes==='pendiente'?'Pendiente':'Parcial']),
+            theme:'grid',
+            styles:{fontSize:8,cellPadding:3,textColor:[220,225,235],fillColor:[10,17,34],lineColor:[22,39,74],lineWidth:0.3},
+            headStyles:{fillColor:[6,20,50],textColor:[100,160,255],fontStyle:'bold',fontSize:7.5},
+            alternateRowStyles:{fillColor:[14,24,46]},
+            columnStyles:{0:{cellWidth:10,halign:'center'},1:{cellWidth:60},2:{cellWidth:25,halign:'center'},3:{cellWidth:25,halign:'center'},4:{cellWidth:35,halign:'center'}},
+            margin:{left:14,right:14},
+            didDrawCell:(data) => {
+                if (data.section==='body' && data.column.index===4) {
+                    const estado = lista[data.row.index]?.estadoMes;
+                    if (estado==='pagado') doc.setTextColor(34,197,94);
+                    else if (estado==='pendiente') doc.setTextColor(239,68,68);
+                    else doc.setTextColor(245,158,11);
+                }
+            }
+        });
+ 
+        const pages = doc.internal.getNumberOfPages();
+        for (let p=1;p<=pages;p++) {
+            doc.setPage(p); doc.setFontSize(7); doc.setTextColor(80,90,110);
+            doc.text(`PowerGym Ibi · Informe ${mesNombre} ${anio} · Pág. ${p}/${pages}`, W/2, 290, {align:'center'});
+        }
+        doc.save(`PowerGym_${mesNombre}_${anio}.pdf`);
+    };
+</script>
+ 
+<script>
+    const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const ahora = new Date();
+    window._mesActual   = ahora.getMonth();
+    window._anioActual  = ahora.getFullYear();
+    window._sociosFiltro = '';
+    window._activeTab    = 'pagos';
+ 
+    function setTabs(tab) {
+        document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('text-blue-500'); b.classList.add('text-slate-500'); });
+        const btn = document.getElementById('btn-'+tab);
+        if (btn) { btn.classList.remove('text-slate-500'); btn.classList.add('text-blue-500'); }
+    }
+ 
+    function estadoBadge(estado) {
+        const map = { pagado:['badge-paid','Pagado'], pendiente:['badge-pending','Pendiente'], revisar:['badge-warning','Revisar'] };
+        const [cls,label] = map[estado] || ['badge-paid',estado];
+        return `<span class="badge ${cls}">${label}</span>`;
+    }
+ 
+    function estadoCard(estado) {
+        return estado==='pagado' ? 'status-paid' : estado==='pendiente' ? 'status-pending' : 'status-warning';
+    }
+ 
+    // ── Plan nuevo socio ──
+    window._planNuevoSocio = 'mensual';
+    window.selectPlanNS = function(plan) {
+        window._planNuevoSocio = plan;
+        const activo   = 'background:#1b4dee;border:1px solid #2e66ff;color:#fff;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;';
+        const inactivo = 'background:#060d1e;border:1px solid #16274a;color:#94a3b8;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;';
+        document.getElementById('ns-plan-mensual').style.cssText    = plan === 'mensual'    ? activo : inactivo;
+        document.getElementById('ns-plan-trimestral').style.cssText = plan === 'trimestral' ? activo : inactivo;
+        document.getElementById('ns-tarifa-label').textContent = plan === 'trimestral' ? 'Tarifa trimestral (€)' : 'Tarifa mensual (€)';
+    };
+ 
+    // ── Plan editar socio ──
+    window._planEditarSocio = 'mensual';
+    window.selectPlanES = function(plan) {
+        window._planEditarSocio = plan;
+        const activo   = 'background:#1b4dee;border:1px solid #2e66ff;color:#fff;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;';
+        const inactivo = 'background:#060d1e;border:1px solid #16274a;color:#94a3b8;border-radius:0.5rem;padding:0.5rem 0.75rem;font-size:0.875rem;font-weight:700;cursor:pointer;';
+        document.getElementById('es-plan-mensual').style.cssText    = plan === 'mensual'    ? activo : inactivo;
+        document.getElementById('es-plan-trimestral').style.cssText = plan === 'trimestral' ? activo : inactivo;
+        document.getElementById('es-tarifa-label').textContent = plan === 'trimestral' ? 'Tarifa trimestral (€)' : 'Tarifa mensual (€)';
+    };
+ 
+    // ── Tipo pago admin ──
+    window.selectTipoPagoAdmin = function(tipo, tarifa) {
+        document.getElementById('mp-tipo').value = tipo;
+        const activo   = 'background:#1b4dee;border:1px solid #2e66ff;color:#fff;border-radius:0.5rem;padding:0.5rem;font-size:0.8rem;font-weight:700;cursor:pointer;';
+        const inactivo = 'background:#060d1e;border:1px solid #16274a;color:#94a3b8;border-radius:0.5rem;padding:0.5rem;font-size:0.8rem;font-weight:700;cursor:pointer;';
+        document.getElementById('mp-tipo-mensual').style.cssText    = tipo === 'mensual'    ? activo : inactivo;
+        document.getElementById('mp-tipo-trimestral').style.cssText = tipo === 'trimestral' ? activo : inactivo;
+        document.getElementById('mp-importe-label').textContent     = tipo === 'trimestral' ? 'Importe trimestral (€)' : 'Importe recibido (€)';
+        document.getElementById('mp-importe').value = tarifa;
+    };
+ 
+    // ── Filtrar lista de pagos ──
+    window.filtrarPagos = function() {
+        const busqueda = (document.getElementById('pagos-search')?.value || '').toLowerCase();
+        const filtro   = document.getElementById('pagos-filtro')?.value || 'todos';
+        document.querySelectorAll('.pago-card').forEach(card => {
+            const nombre = card.dataset.nombre || '';
+            const estado = card.dataset.estado || '';
+            const coincideNombre = nombre.includes(busqueda);
+            const coincideEstado = filtro === 'todos' || estado === filtro;
+            card.style.display = (coincideNombre && coincideEstado) ? '' : 'none';
+        });
+    };
+ 
+    function closeModal() { document.getElementById('modal-overlay').classList.remove('active'); }
+    function openModal(html) { document.getElementById('modal-content').innerHTML = html; document.getElementById('modal-overlay').classList.add('active'); }
+ 
+    window.renderTab = function(tab) {
+        window._activeTab = tab;
+        setTabs(tab);
+        if (tab==='pagos')   window.renderPagos();
+        else if (tab==='socios')  window.renderSocios();
+        else if (tab==='ajustes') window.renderAjustes();
+    };
+ 
+    document.getElementById('modal-overlay').addEventListener('click', function(e) { if (e.target===this) closeModal(); });
+</script>
+</body>
+</html>
